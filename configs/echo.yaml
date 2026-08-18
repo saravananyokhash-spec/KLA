@@ -1,0 +1,29 @@
+# ECHO Phase 4 Configuration
+dataset_root: "D:/kla"
+train_split_path: "outputs/baseline/train_split.csv"
+val_split_path: "outputs/baseline/val_split.csv"
+
+# Training Hyperparameters
+batch_size: 16
+learning_rate: 0.0002
+epochs: 30
+num_workers: 4
+seed: 42
+
+# Composite Loss Function Weights
+loss_weights:
+  pixel: 1.0     # Weight for L1 loss
+  edge: 0.1      # Weight for differentiable gradient/edge loss
+  ssim: 0.1      # Weight for differentiable SSIM loss
+
+# Model Architecture Configuration
+model:
+  in_channels: 1
+  out_channels: 1
+  num_features: 64
+  num_blocks: 6   # Blocks in shared residual feature trunk
+
+# Ablation Options (for Phase 5 validation)
+ablation:
+  disable_gate: false    # If true, disables the spatial gating mask (sets E = 0.5)
+  disable_detail: false  # If true, disables the edge branch contribution (sets E = 0.0)

@@ -1,0 +1,21 @@
+# Training configuration for the Phase 2 baseline restoration model
+
+dataset_root: "D:/kla"
+train_split_path: "outputs/baseline/train_split.csv"
+val_split_path: "outputs/baseline/val_split.csv"
+checkpoint_path: "checkpoints/baseline_best.pth"
+
+# Hyperparameters
+seed: 42
+batch_size: 16
+learning_rate: 0.0002
+epochs: 30
+num_workers: 0  # Set to 0 to avoid multi-processing overhead or errors on Windows
+
+# Loss & Model Config
+loss_type: "L1"  # "L1" or "L2"
+model:
+  in_channels: 1
+  out_channels: 1
+  num_features: 64
+  num_blocks: 4

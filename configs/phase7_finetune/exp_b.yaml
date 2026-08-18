@@ -1,0 +1,57 @@
+experiment_name: "phase7_ft_exp_b"
+phase: "7_FT_B"
+description: "Phase 7 FT Exp B — Robustness weight 0.50"
+
+dataset:
+  dataset_root: "D:/kla"
+  train_csv: "outputs/baseline/train_split.csv"
+  val_csv: "outputs/baseline/val_split.csv"
+  in_channels: 1
+  out_channels: 1
+  img_size: 256
+
+model:
+  phase4_checkpoint: "outputs/echo_phase4/checkpoints/echo_best.pth"
+  phase5b_checkpoint: "outputs/phase5b/checkpoints/echo_phase5b_best.pth"
+  phase7_checkpoint: "" # Not loaded for Exp B
+  spatial_channels: 32
+  freq_channels: 32
+  fusion_channels: 64
+  cutoff_low: 0.15
+  cutoff_high: 0.40
+
+degradation:
+  preserve_original_probability: 0.75
+  blur_probability: 0.25
+  blur_sigma_min: 0.3
+  blur_sigma_max: 1.5
+  combined_noise_blur: true
+  noise_sigma_min: 0.01
+  noise_sigma_max: 0.06
+  blur_only_fraction: 0.5
+
+training:
+  seed: 42
+  batch_size: 8
+  epochs: 5
+  lr: 0.0003
+  weight_decay: 1.0e-4
+  scheduler_gamma: 0.8
+  overfit_iters: 50
+
+loss_weights:
+  pixel_l1: 2.0
+  ssim: 0.3
+  hf_direct: 0.15
+  sobel_edge: 0.15
+  hf_component: 0.05
+  freq_fft: 0.05
+  lpips: 0.010
+  p4_anchor: 0.02
+  robustness_loss_weight: 0.50 # 0.5x robustness loss weight
+
+output_dir: "outputs/phase7_finetune/exp_b"
+checkpoints_dir: "outputs/phase7_finetune/exp_b/checkpoints"
+results_dir: "outputs/phase7_finetune/exp_b/results"
+evaluation_dir: "outputs/phase7_finetune/exp_b/evaluation"
+configs_dir: "outputs/phase7_finetune/exp_b/configs"
