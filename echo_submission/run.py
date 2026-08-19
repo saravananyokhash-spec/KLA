@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 # ==============================================================================
-# 1. MODEL ARCHITECTURE CODE (PHASE 4 BASELINE & PHASE 5/9/11 BACKBONE)
+# 1. MODEL ARCHITECTURE CODE (PHASE 4 BASELINE & PHASE 9 CHAMPION RESTORATION NET)
 # ==============================================================================
 
 class ResidualBlock(nn.Module):
@@ -289,18 +289,8 @@ class SpatialFrequencyRestorationNet(nn.Module):
         return final_hr, x_lf, x_mf, x_hf, feat_fused
 
 # ==============================================================================
-# 2. INFERENCE PIPELINE WITH DEGRADATION ESTIMATOR AND ADAPTIVE ROUTING
+# 2. INFERENCE RUN PIPELINE
 # ==============================================================================
-
-def estimate_noise_sigma(arr):
-    """
-    Robust Laplacian MAD (Median Absolute Deviation) noise level estimator.
-    Insensitive to actual edges and structures; measures high-frequency noise level.
-    """
-    lap = arr[1:-1, 1:-1] - 0.25 * (arr[:-2, 1:-1] + arr[2:, 1:-1] + arr[1:-1, :-2] + arr[1:-1, 2:])
-    mad = np.median(np.abs(lap - np.median(lap)))
-    noise_sigma = mad * 1.4826 / 1.118
-    return noise_sigma
 
 def main():
     if len(sys.argv) != 3:
@@ -320,17 +310,17 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
-    # Determine paths relative to this run.py script
+    # Check local checkpoint paths
     base_dir = os.path.dirname(os.path.abspath(__file__))
     model_p4_path = os.path.join(base_dir, "models", "echo_best.pth")
-    model_p9_path = os.path.join(base_dir, "models", "phase9.pth")
-    model_p11_path = os.path.join(base_dir, "models", "phase11_detail.pth")
+    model_p5_path = os.path.join(base_dir, "models", "FINAL_MODEL.pth")
 
-    # Verify model checkpoints
-    for path in (model_p4_path, model_p9_path, model_p11_path):
-        if not os.path.exists(path):
-            print(f"Error: Required model checkpoint not found at: {path}")
-            sys.exit(1)
+    if not os.path.exists(model_p4_path):
+        print(f"Error: Phase 4 guidance model checkpoint not found at: {model_p4_path}")
+        sys.exit(1)
+    if not os.path.exists(model_p5_path):
+        print(f"Error: Final restoration model checkpoint not found at: {model_p5_path}")
+        sys.exit(1)
 
     # 1. Load Phase 4 Guidance Model
     print("Loading Phase 4 guidance model...")
@@ -342,32 +332,21 @@ def main():
     for p in model_p4.parameters():
         p.requires_grad = False
 
-    # 2. Load Phase 9 Fidelity Expert Model
-    print("Loading Phase 9 fidelity expert model...")
-    model_p9 = SpatialFrequencyRestorationNet(
+    # 2. Load Final Spatial-Frequency Restoration Model (Phase 9 Champion)
+    print("Loading ECHO final restoration model...")
+    student = SpatialFrequencyRestorationNet(
         spatial_channels=32, freq_channels=32, fusion_channels=64, cutoff_low=0.15, cutoff_high=0.40
     ).to(device)
-    p9_chk = torch.load(model_p9_path, map_location=device, weights_only=False)
-    p9_state = p9_chk["model_state_dict"] if "model_state_dict" in p9_chk else p9_chk
-    model_p9.load_state_dict(p9_state)
-    model_p9.eval()
-    for p in model_p9.parameters():
+    p5_chk = torch.load(model_p5_path, map_location=device, weights_only=False)
+    p5_state = p5_chk["model_state_dict"] if "model_state_dict" in p5_chk else p5_chk
+    student.load_state_dict(p5_state)
+    student.eval()
+    for p in student.parameters():
         p.requires_grad = False
 
-    # 3. Load Phase 11 Detail-Preserving Robust Model
-    print("Loading Phase 11 detail-preserving robust model...")
-    model_p11 = SpatialFrequencyRestorationNet(
-        spatial_channels=32, freq_channels=32, fusion_channels=64, cutoff_low=0.15, cutoff_high=0.40
-    ).to(device)
-    p11_chk = torch.load(model_p11_path, map_location=device, weights_only=False)
-    p11_state = p11_chk["model_state_dict"] if "model_state_dict" in p11_chk else p11_chk
-    model_p11.load_state_dict(p11_state)
-    model_p11.eval()
-    for p in model_p11.parameters():
-        p.requires_grad = False
+    print("Models loaded successfully. Starting batch inference...")
 
-    print("Models loaded successfully. Starting adaptive dual-model inference...")
-
+    # Load input files sorted deterministically
     input_files = sorted(glob.glob(os.path.join(input_dir, "*.npy")))
     if not input_files:
         print(f"Warning: No .npy files found in {input_dir}")
@@ -379,7 +358,7 @@ def main():
             # Load numpy array
             arr = np.load(file_path)
             
-            # Format normalization
+            # Dimensions preprocessing normalization check
             if arr.ndim == 3 and arr.shape[-1] == 1:
                 arr = arr.squeeze(-1)
             elif arr.ndim != 2:
@@ -387,17 +366,7 @@ def main():
                 
             in_h, in_w = arr.shape
             
-            # Estimate degradation severity
-            noise_sigma = estimate_noise_sigma(arr)
-            
-            # Calculate routing blending weight
-            # If noise_sigma <= 0.015: clean/smooth image -> use 100% Phase 9
-            # If noise_sigma >= 0.060: highly degraded image -> use 100% Phase 11-DP
-            # In between: linearly blend predictions
-            t_low, t_high = 0.015, 0.060
-            alpha = 1.0 - np.clip((noise_sigma - t_low) / (t_high - t_low), 0.0, 1.0)
-            
-            # Convert to float32 tensor [1, 1, H, W]
+            # Convert to float32 tensor of shape [1, 1, H, W]
             inp_tensor = torch.from_numpy(arr.astype(np.float32)).unsqueeze(0).unsqueeze(0).to(device)
             
             with torch.no_grad():
@@ -408,12 +377,8 @@ def main():
                 p4_raw, _ = model_p4(inp_tensor)
                 p4_guidance = torch.clamp(p4_raw, 0.0, 1.0)
                 
-                # Inference on both experts
-                pred_p9, *_ = model_p9(lr_up, p4_guidance)
-                pred_p11, *_ = model_p11(lr_up, p4_guidance)
-                
-                # Adaptive Dual-Model fusion
-                pred_hr = alpha * pred_p9 + (1.0 - alpha) * pred_p11
+                # Final restoration
+                pred_hr, _, _, _, _ = student(lr_up, p4_guidance)
                 pred_hr = torch.clamp(pred_hr, 0.0, 1.0)
                 
             # Convert back to numpy
@@ -423,19 +388,19 @@ def main():
             output = np.nan_to_num(output, nan=0.0, posinf=1.0, neginf=0.0)
             output = np.clip(output, 0.0, 1.0)
             
-            # Output resolution scaling check
+            # Verify target resolution (2x scaling check)
             out_h, out_w = output.shape
             if out_h != 2 * in_h or out_w != 2 * in_w:
-                raise ValueError(f"Output shape mismatch: got {output.shape}, expected {(2*in_h, 2*in_w)}")
+                raise ValueError(f"Output shape mismatch: got {output.shape}, expected {(2*in_h, 2*in_w)} via 2x scaling.")
                 
-            # Save output array
+            # Save array
             np.save(os.path.join(output_dir, fn), output)
             
         except Exception as e:
             print(f"Error processing file {fn}: {e}")
             sys.exit(1)
 
-    print("Adaptive Dual-Model restoration complete.")
+    print("Restoration pipeline run complete.")
 
 if __name__ == "__main__":
     main()
