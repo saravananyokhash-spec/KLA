@@ -18,7 +18,7 @@ The final submission uses a **Spatial Frequency Restoration Network** (`SpatialF
 
 ## Directory Structure
 ```text
-echo_submission/
+One_and_Zero/
 ├── run.py                 # Self-contained inference wrapper
 ├── requirements.txt       # Pinned execution dependencies
 ├── README.md              # Project documentation
@@ -26,7 +26,7 @@ echo_submission/
 │
 └── models/
     ├── echo_best.pth      # Phase 4 structural guidance model
-    └── FINAL_MODEL.pth    # Phase 9 champion restoration model
+    └── phase9.pth         # Phase 9 champion restoration model
 ```
 
 ## Execution
@@ -37,7 +37,7 @@ python run.py <input-dir> <output-dir>
 
 ### Example
 ```bash
-python run.py ./input ./output
+python run.py D:\Test_input D:\Test_output
 ```
 
 ## Input Format

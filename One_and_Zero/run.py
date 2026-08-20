@@ -313,38 +313,43 @@ def main():
     # Check local checkpoint paths
     base_dir = os.path.dirname(os.path.abspath(__file__))
     model_p4_path = os.path.join(base_dir, "models", "echo_best.pth")
-    model_p5_path = os.path.join(base_dir, "models", "phase9_checkpoint.pth")
+    model_p5_path = os.path.join(base_dir, "models", "phase9.pth")
 
     if not os.path.exists(model_p4_path):
         print(f"Error: Phase 4 guidance model checkpoint not found at: {model_p4_path}")
         sys.exit(1)
     if not os.path.exists(model_p5_path):
-        print(f"Error: Final restoration model checkpoint not found at: {model_p5_path}")
+        print(f"Error: Phase 9 champion model checkpoint not found at: {model_p5_path}")
         sys.exit(1)
 
     # 1. Load Phase 4 Guidance Model
-    print("Loading Phase 4 guidance model...")
+    print("Loading required Phase 4 guidance model for Phase 9 inference...")
     model_p4 = BaselineECHOModel(in_channels=1, out_channels=1, num_features=64, num_blocks=6).to(device)
     p4_chk = torch.load(model_p4_path, map_location=device, weights_only=False)
-    p4_state = p4_chk["model_state_dict"] if "model_state_dict" in p4_chk else p4_chk
-    model_p4.load_state_dict(p4_state)
+    p4_state = p4_chk["model_state_dict"] if isinstance(p4_chk, dict) and "model_state_dict" in p4_chk else p4_chk
+    model_p4.load_state_dict(p4_state, strict=True)
     model_p4.eval()
     for p in model_p4.parameters():
         p.requires_grad = False
+    print("Phase 4 checkpoint loaded successfully.")
 
     # 2. Load Final Spatial-Frequency Restoration Model (Phase 9 Champion)
-    print("Loading ECHO final restoration model...")
+    print("Loading Phase 9 champion model...")
     student = SpatialFrequencyRestorationNet(
         spatial_channels=32, freq_channels=32, fusion_channels=64, cutoff_low=0.15, cutoff_high=0.40
     ).to(device)
     p5_chk = torch.load(model_p5_path, map_location=device, weights_only=False)
-    p5_state = p5_chk["model_state_dict"] if "model_state_dict" in p5_chk else p5_chk
-    student.load_state_dict(p5_state)
+    p5_state = p5_chk["model_state_dict"] if isinstance(p5_chk, dict) and "model_state_dict" in p5_chk else p5_chk
+    student.load_state_dict(p5_state, strict=True)
     student.eval()
     for p in student.parameters():
         p.requires_grad = False
 
-    print("Models loaded successfully. Starting batch inference...")
+    p9_params = sum(p.numel() for p in student.parameters())
+    print(f"Phase 9 checkpoint:\n{os.path.abspath(model_p5_path)}")
+    print(f"\nModel parameters:\n{p9_params}")
+    print("Phase 9 checkpoint loaded successfully.")
+    print("Starting batch inference...")
 
     # Load input files sorted deterministically (supporting NoisyLR fallback)
     input_files = sorted(glob.glob(os.path.join(input_dir, "*.npy")))
