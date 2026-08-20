@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 # ==============================================================================
-# 1. MODEL ARCHITECTURE CODE (PHASE 4 BASELINE & PHASE 9 CHAMPION RESTORATION NET)
+# 1. MODEL ARCHITECTURE CODE (PHASE 4 BASELINE & PHASE 9 RESTORATION NET)
 # ==============================================================================
 
 class ResidualBlock(nn.Module):
@@ -313,7 +313,7 @@ def main():
     # Check local checkpoint paths
     base_dir = os.path.dirname(os.path.abspath(__file__))
     model_p4_path = os.path.join(base_dir, "models", "echo_best.pth")
-    model_p5_path = os.path.join(base_dir, "models", "FINAL_MODEL.pth")
+    model_p5_path = os.path.join(base_dir, "models", "phase9_checkpoint.pth")
 
     if not os.path.exists(model_p4_path):
         print(f"Error: Phase 4 guidance model checkpoint not found at: {model_p4_path}")
@@ -346,11 +346,24 @@ def main():
 
     print("Models loaded successfully. Starting batch inference...")
 
-    # Load input files sorted deterministically
+    # Load input files sorted deterministically (supporting NoisyLR fallback)
     input_files = sorted(glob.glob(os.path.join(input_dir, "*.npy")))
     if not input_files:
+        fallback_dir = os.path.join(input_dir, "NoisyLR")
+        if os.path.exists(fallback_dir):
+            input_files = sorted(glob.glob(os.path.join(fallback_dir, "*.npy")))
+
+    if not input_files:
         print(f"Warning: No .npy files found in {input_dir}")
+        print("ECHO INFERENCE COMPLETE")
+        print("Input files: 0")
+        print("Successful outputs: 0")
+        print("Failed outputs: 0")
+        print(f"Output directory: {output_dir}")
         return
+
+    success_count = 0
+    fail_count = 0
 
     for file_path in input_files:
         fn = os.path.basename(file_path)
@@ -395,12 +408,20 @@ def main():
                 
             # Save array
             np.save(os.path.join(output_dir, fn), output)
+            success_count += 1
             
         except Exception as e:
             print(f"Error processing file {fn}: {e}")
-            sys.exit(1)
+            fail_count += 1
 
-    print("Restoration pipeline run complete.")
+    print("\nECHO INFERENCE COMPLETE")
+    print(f"Input files: {len(input_files)}")
+    print(f"Successful outputs: {success_count}")
+    print(f"Failed outputs: {fail_count}")
+    print(f"Output directory: {output_dir}")
+
+    if fail_count > 0:
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
